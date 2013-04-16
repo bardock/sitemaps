@@ -39,7 +39,7 @@ namespace Sitemaps
         {
             var routes = RouteTable.Routes;
 
-            using(routes.GetWriteLock())
+            using (routes.GetWriteLock())
             {
                 routes.MapRoute("sitemaps", url, new { controller = "Sitemap", action = "Index" });
             }
@@ -52,7 +52,7 @@ namespace Sitemaps
 
             var nodes = GetSitemapNodes(context, page, count.HasValue ? count.Value : PageSize);
 
-            if(nodes.Count() < nodes.TotalCount && !page.HasValue)
+            if (nodes.Count() < nodes.TotalCount && !page.HasValue)
             {
                 root = new XElement(xmlns + "sitemapindex");
 
@@ -60,7 +60,7 @@ namespace Sitemaps
 
                 var timestamp = new DateTimeOffset(nodes.First().LastModified);
 
-                for(var i = 0; i < pages; i++)
+                for (var i = 0; i < pages; i++)
                 {
                     root.Add(
                     new XElement(xmlns + "sitemap",
@@ -73,7 +73,7 @@ namespace Sitemaps
             {
                 root = new XElement(xmlns + "urlset");
 
-                foreach(var node in nodes)
+                foreach (var node in nodes)
                 {
                     root.Add(
                     new XElement(xmlns + "url",
@@ -85,9 +85,9 @@ namespace Sitemaps
                 }
             }
 
-            using(var ms = new MemoryStream())
+            using (var ms = new MemoryStream())
             {
-                using(var writer = new StreamWriter(ms, Encoding.UTF8))
+                using (var writer = new StreamWriter(ms, Encoding.UTF8))
                 {
                     root.Save(writer);
                 }
@@ -113,7 +113,7 @@ namespace Sitemaps
 
         public void AddNode(IEnumerable<SitemapNode> nodes)
         {
-            foreach(var node in nodes)
+            foreach (var node in nodes)
             {
                 DynamicNodes.Add(node);
             }
@@ -121,9 +121,9 @@ namespace Sitemaps
 
         private IEnumerable<SitemapNode> CacheOrGetStaticNodes(ControllerContext context)
         {
-            lock(Sync)
+            lock (Sync)
             {
-                if(StaticNodes.Count == 0)
+                if (StaticNodes.Count == 0)
                 {
                     var manifest = GetStaticManifest();
                     var timestamp = DateTime.UtcNow;
@@ -139,7 +139,7 @@ namespace Sitemaps
                         Priority = pair.Item2.Priority
                     }));
 
-                    foreach(var node in nodes.Where(n => Uri.IsWellFormedUriString(n.Url, UriKind.Absolute) && n.Url.MatchesRouteWithHttpGet()))
+                    foreach (var node in nodes.Where(n => Uri.IsWellFormedUriString(n.Url, UriKind.Absolute) && n.Url.MatchesRouteWithHttpGet()))
                     {
                         StaticNodes.Add(node);
                     }
@@ -151,13 +151,14 @@ namespace Sitemaps
 
         private static IEnumerable<KeyValuePair<Type, List<Tuple<string, SitemapAttribute>>>> GetStaticManifest()
         {
-            lock(Sync)
+            lock (Sync)
             {
                 var manifest = new Dictionary<Type, List<Tuple<string, SitemapAttribute>>>(0);
                 var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.GlobalAssemblyCache && !a.ReflectionOnly);
-                var controllerTypes = assemblies.SelectMany(assembly => assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(Controller))));
 
-                foreach(var type in controllerTypes)
+                var controllerTypes = assemblies.SelectMany(assembly => GetLoadableTypes(assembly).Where(t => t.IsSubclassOf(typeof(Controller))));
+
+                foreach (var type in controllerTypes)
                 {
                     var attribute = type.GetCustomAttributes(true).OfType<SitemapAttribute>().FirstOrDefault();
                     var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
@@ -168,19 +169,31 @@ namespace Sitemaps
             }
         }
 
+        public static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e)
+            {
+                return e.Types.Where(t => t != null);
+            }
+        }
+
         private static void ProcessMethodSitemaps(IDictionary<Type, List<Tuple<string, SitemapAttribute>>> manifest, Type type, IEnumerable<MethodInfo> methods, SitemapAttribute defaultAttribute = null)
         {
-            foreach(var method in methods)
+            foreach (var method in methods)
             {
                 SitemapAttribute attribute;
-                if(defaultAttribute != null)
+                if (defaultAttribute != null)
                 {
                     attribute = defaultAttribute;
                 }
                 else
                 {
                     attribute = method.GetCustomAttributes(false).OfType<SitemapAttribute>().FirstOrDefault();
-                    if(attribute == null)
+                    if (attribute == null)
                     {
                         continue;
                     }
@@ -189,12 +202,12 @@ namespace Sitemaps
                 // Support the user changing the action name with an attribute
                 var action = method.Name;
                 var actionName = method.GetCustomAttributes(false).OfType<ActionNameAttribute>().FirstOrDefault();
-                if(actionName != null)
+                if (actionName != null)
                 {
                     action = actionName.Name;
                 }
 
-                if(!manifest.ContainsKey(type))
+                if (!manifest.ContainsKey(type))
                 {
                     manifest.Add(type, new List<Tuple<string, SitemapAttribute>>());
                 }
@@ -205,7 +218,7 @@ namespace Sitemaps
 
         private static bool IsOverride(MethodInfo method)
         {
-            if(method.GetBaseDefinition() != method)
+            if (method.GetBaseDefinition() != method)
             {
                 return true;
             }
@@ -230,7 +243,7 @@ namespace Sitemaps
             var routes = RouteTable.Routes;
             var data = routes.GetVirtualPath(request, values);
 
-            if(data == null)
+            if (data == null)
             {
                 return null;
             }
