@@ -16,6 +16,7 @@ namespace Sitemaps
     {
         private static readonly ICollection<SitemapNode> StaticNodes;
         private static readonly ICollection<SitemapNode> DynamicNodes;
+        private static readonly ICollection<Func<ControllerContext, IEnumerable<SitemapNode>>> LazyDynamicNodes;
 
         private static readonly object Sync = new object();
 
@@ -28,6 +29,7 @@ namespace Sitemaps
             PageSize = 125;
             StaticNodes = new List<SitemapNode>(0);
             DynamicNodes = new List<SitemapNode>(0);
+            LazyDynamicNodes = new List<Func<ControllerContext, IEnumerable<SitemapNode>>>(0);
         }
 
         public static void Register()
@@ -58,14 +60,14 @@ namespace Sitemaps
 
                 var pages = Math.Ceiling(nodes.TotalCount / (double)PageSize);
 
-                var timestamp = new DateTimeOffset(nodes.First().LastModified);
+                var lastmod = nodes.Max(x => x.LastModified);
 
                 for (var i = 0; i < pages; i++)
                 {
                     root.Add(
                     new XElement(xmlns + "sitemap",
-                        new XElement(xmlns + "loc", Uri.EscapeUriString(string.Format("{0}/?page={1}", GetUrl(context), i + 1))),
-                        new XElement(xmlns + "lastmod", timestamp.ToString("yyyy-MM-ddTHH:mmK", CultureInfo.InvariantCulture)))
+                        new XElement(xmlns + "loc", Uri.EscapeUriString(string.Format("{0}?page={1}", GetUrl(context), i + 1))),
+                        new XElement(xmlns + "lastmod", lastmod.ToString("yyyy-MM-ddTHH:mmZ", CultureInfo.InvariantCulture)))
                         );
                 }
             }
@@ -78,9 +80,9 @@ namespace Sitemaps
                     root.Add(
                     new XElement(xmlns + "url",
                         new XElement(xmlns + "loc", Uri.EscapeUriString(node.Url)),
-                        new XElement(xmlns + "lastmod", node.LastModified.ToString("yyyy-MM-ddTHH:mmK", CultureInfo.InvariantCulture)),
+                        new XElement(xmlns + "lastmod", node.LastModified.ToString("yyyy-MM-ddTHH:mmZ", CultureInfo.InvariantCulture)),
                         new XElement(xmlns + "changefreq", node.Frequency.ToString().ToLowerInvariant()),
-                        new XElement(xmlns + "priority", node.Priority.ToString().ToLowerInvariant())
+                        new XElement(xmlns + "priority", node.Priority.ToString(CultureInfo.InvariantCulture).ToLowerInvariant())
                         ));
                 }
             }
@@ -102,6 +104,7 @@ namespace Sitemaps
 
             var source = new List<SitemapNode>(nodes);
             source.AddRange(DynamicNodes);
+            source.AddRange(LazyDynamicNodes.SelectMany(x => x(context)));
 
             return new PagedQueryable<SitemapNode>(source.AsQueryable(), page, count);
         }
@@ -116,6 +119,32 @@ namespace Sitemaps
             foreach (var node in nodes)
             {
                 DynamicNodes.Add(node);
+            }
+        }
+
+        public void AddNode(params Func<ControllerContext, SitemapNode>[] nodes)
+        {
+            AddNode(nodes.ToList());
+        }
+
+        public void AddNode(IEnumerable<Func<ControllerContext, SitemapNode>> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                LazyDynamicNodes.Add((ctx) => new List<SitemapNode>() { node(ctx) });
+            }
+        }
+
+        public void AddNode(params Func<ControllerContext, IEnumerable<SitemapNode>>[] nodes)
+        {
+            AddNode(nodes.ToList());
+        }
+
+        public void AddNode(IEnumerable<Func<ControllerContext, IEnumerable<SitemapNode>>> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                LazyDynamicNodes.Add(node);
             }
         }
 
@@ -230,7 +259,7 @@ namespace Sitemaps
             return GetUrl(context.RequestContext, context.RouteData.Values);
         }
 
-        protected string GetUrl(ControllerContext context, object routeValues)
+        public string GetUrl(ControllerContext context, object routeValues)
         {
             var values = new RouteValueDictionary(routeValues);
             var request = new RequestContext(context.HttpContext, context.RouteData);
