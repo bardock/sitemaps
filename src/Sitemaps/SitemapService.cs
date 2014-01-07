@@ -79,7 +79,7 @@ namespace Sitemaps
                 {
                     root.Add(
                     new XElement(xmlns + "url",
-                        new XElement(xmlns + "loc", Uri.EscapeUriString(node.Url)),
+                        new XElement(xmlns + "loc", node.Url),
                         new XElement(xmlns + "lastmod", node.LastModified.ToString("yyyy-MM-ddTHH:mmZ", CultureInfo.InvariantCulture)),
                         new XElement(xmlns + "changefreq", node.Frequency.ToString().ToLowerInvariant()),
                         new XElement(xmlns + "priority", node.Priority.ToString(CultureInfo.InvariantCulture).ToLowerInvariant())
